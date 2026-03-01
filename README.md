@@ -48,3 +48,4 @@ Designed for secure environments such as:
 * Multi-language support
   
   Note: This browser prototype simulates the workflow. The production version runs fully on-device using ONNX Runtime optimized for AMD Ryzen AI NPU with no cloud dependency.
+  Note: The browser demo simulates local inference. The production version runs fully on-device using ONNX Runtime optimized for AMD Ryzen AI NPU with zero cloud dependency.
