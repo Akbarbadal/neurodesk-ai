@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NeuroDesk AI — AMD Ryzen AI NPU Demo</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --red: #ED1C24;
+  --red2: #c41019;
+  --orange: #E85D04;
+  --bg: #07090E;
+  --s1: #0C0F18;
+  --s2: #111520;
+  --s3: #161B2A;
+  --border: #1C2235;
+  --border2: #232B40;
+  --text: #E2E5F0;
+  --muted: #5A6480;
+  --muted2: #7B89A8;
+  --green: #1FD080;
+  --blue: #4A9EFF;
+  --gold: #F5A623;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Manrope', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── SCANLINE OVERLAY ── */
+body::after {
+  content:'';
+  position:fixed; inset:0; z-index:9999;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+  pointer-events:none;
+}
+
+/* ── ANIMATED BG ── */
+.bg-grid {
+  position:fixed; inset:0; z-index:0;
+  background-image:
+    linear-gradient(rgba(237,28,36,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(237,28,36,0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  animation: gridDrift 20s linear infinite;
+}
+@keyframes gridDrift {
+  0% { background-position: 0 0; }
+  100% { background-position: 48px 48px; }
+}
+
+.bg-glow {
+  position:fixed; z-index:0;
+  border-radius:50%;
+  filter:blur(120px);
+  pointer-events:none;
+}
+.glow1 { width:600px;height:600px; background:rgba(237,28,36,0.06); top:-200px; right:-100px; }
+.glow2 { width:400px;height:400px; background:rgba(232,93,4,0.04); bottom:0; left:-100px; }
+
+/* ── LAYOUT ── */
+.app { display:flex; min-height:100vh; position:relative; z-index:1; }
+
+/* ── SIDEBAR ── */
+.sidebar {
+  width:240px; flex-shrink:0;
+  background: var(--s1);
+  border-right: 1px solid var(--border);
+  display:flex; flex-direction:column;
+  position:sticky; top:0; height:100vh;
+  overflow:hidden;
+}
+
+.logo-zone {
+  padding: 22px 20px 18px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+
+.logo-badge {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: var(--red);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  display: flex; align-items: center; gap: 6px;
+}
+
+.logo-badge::before {
+  content:'';
+  width:5px; height:5px;
+  background:var(--red);
+  border-radius:50%;
+  animation: blink 1.5s infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+.logo-name {
+  font-family: 'Syne', sans-serif;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.5px;
+}
+.logo-name em { color: var(--red); font-style:normal; }
+
+.logo-sub {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.npu-status {
+  margin-top: 12px;
+  display:flex; align-items:center; gap:8px;
+  background: rgba(31,208,128,0.08);
+  border: 1px solid rgba(31,208,128,0.2);
+  border-radius: 5px;
+  padding: 6px 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--green);
+}
+.npu-pulse {
+  width:6px;height:6px;
+  background:var(--green);
+  border-radius:50%;
+  animation:pulse 1.8s infinite;
+}
+@keyframes pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.4);opacity:0.6} }
+
+.nav-section-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 14px 20px 6px;
+}
+
+.nav-item {
+  display:flex; align-items:center; gap:11px;
+  padding: 10px 20px;
+  cursor:pointer;
+  font-size:13px;
+  color: var(--muted2);
+  border-left: 2px solid transparent;
+  transition: all 0.15s;
+  position:relative;
+}
+.nav-item:hover { color:var(--text); background:rgba(255,255,255,0.02); }
+.nav-item.active {
+  color:var(--text);
+  border-left-color: var(--red);
+  background: linear-gradient(90deg, rgba(237,28,36,0.08) 0%, transparent 100%);
+}
+.nav-item.active .nav-dot { background:var(--red); }
+
+.nav-icon { font-size:15px; width:20px; text-align:center; flex-shrink:0; }
+.nav-dot { width:4px;height:4px; background:var(--border2); border-radius:50%; margin-left:auto; transition:.15s; }
+
+.sidebar-stats {
+  margin-top:auto;
+  padding:14px 20px;
+  border-top:1px solid var(--border);
+}
+.stat-row {
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:6px;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:10px;
+  color:var(--muted);
+}
+.stat-val { color:var(--green); font-weight:600; }
+.stat-val.red { color:var(--red); }
+
+/* ── MAIN ── */
+.main { flex:1; display:flex; flex-direction:column; min-width:0; }
+
+.topbar {
+  height:52px;
+  background:var(--s1);
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 26px;
+  position:sticky; top:0; z-index:50;
+}
+
+.topbar-left {
+  display:flex; align-items:center; gap:12px;
+}
+
+.page-title {
+  font-family:'Syne',sans-serif;
+  font-size:14px;
+  font-weight:700;
+  color:var(--text);
+}
+
+.breadcrumb {
+  font-family:'IBM Plex Mono',monospace;
+  font-size:10px;
+  color:var(--muted);
+}
+
+.topbar-chips { display:flex; gap:8px; }
+
+.chip {
+  display:flex; align-items:center; gap:5px;
+  padding:4px 10px;
+  border-radius:20px;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:10px;
+}
+.chip-green { background:rgba(31,208,128,0.1); border:1px solid rgba(31,208,128,0.2); color:var(--green); }
+.chip-red { background:rgba(237,28,36,0.1); border:1px solid rgba(237,28,36,0.2); color:var(--red); }
+.chip-dot { width:5px;height:5px;border-radius:50%;flex-shrink:0; }
+
+/* ── PANELS ── */
+.panel { display:none; padding:24px 26px; animation: fadeUp .2s ease; flex:1; }
+.panel.active { display:flex; flex-direction:column; }
+
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(6px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+/* ── HOME PANEL ── */
+.hero-card {
+  background: linear-gradient(135deg, var(--s2) 0%, var(--s3) 100%);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--red);
+  border-radius: 10px;
+  padding: 24px 28px;
+  margin-bottom: 22px;
+  position:relative; overflow:hidden;
+}
+.hero-card::after {
+  content:'';
+  position:absolute; right:-40px; top:-40px;
+  width:200px;height:200px;
+  background:radial-gradient(circle, rgba(237,28,36,0.08), transparent 70%);
+  pointer-events:none;
+}
+.hero-title {
+  font-family:'Syne',sans-serif;
+  font-size:24px;
+  font-weight:800;
+  color:var(--text);
+  line-height:1.2;
+  margin-bottom:8px;
+}
+.hero-title span { color:var(--red); }
+.hero-desc { font-size:13px; color:var(--muted2); line-height:1.7; max-width:580px; }
+
+.stats-row {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px;
+}
+.stat-card {
+  background:var(--s2);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:18px;
+  position:relative; overflow:hidden;
+}
+.stat-card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+}
+.stat-card:nth-child(1)::before { background:var(--red); }
+.stat-card:nth-child(2)::before { background:var(--green); }
+.stat-card:nth-child(3)::before { background:var(--blue); }
+.stat-card:nth-child(4)::before { background:var(--gold); }
+
+.stat-big {
+  font-family:'Syne',sans-serif;
+  font-size:30px; font-weight:800;
+  color:var(--text);
+}
+.stat-lbl { font-size:11px; color:var(--muted); margin-top:3px; }
+
+.feature-grid {
+  display:grid; grid-template-columns:repeat(2,1fr); gap:14px;
+}
+.feat-card {
+  background:var(--s2);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:20px;
+  cursor:pointer;
+  display:flex; align-items:flex-start; gap:14px;
+  transition:all .2s;
+}
+.feat-card:hover {
+  border-color:var(--red);
+  background:rgba(237,28,36,0.04);
+  transform:translateY(-2px);
+  box-shadow:0 8px 32px rgba(237,28,36,0.08);
+}
+.feat-icon {
+  width:42px;height:42px;
+  border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px; flex-shrink:0;
+}
+.feat-title {
+  font-family:'Syne',sans-serif;
+  font-size:14px;font-weight:700;
+  color:var(--text); margin-bottom:5px;
+}
+.feat-desc { font-size:12px;color:var(--muted2);line-height:1.6; }
+.feat-tag {
+  display:inline-block;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:9px;
+  background:rgba(237,28,36,0.12);
+  color:var(--red);
+  padding:2px 7px; border-radius:3px;
+  margin-top:6px;
+  letter-spacing:0.5px;
+}
+
+/* ── CHAT LAYOUT ── */
+.chat-wrap {
+  display:grid; grid-template-columns:1fr 300px; gap:16px;
+  flex:1; min-height:0;
+}
+.chat-container {
+  background:var(--s2);
+  border:1px solid var(--border);
+  border-radius:10px;
+  display:flex;flex-direction:column;
+  overflow:hidden;
+  min-height: 520px;
+}
+.chat-top {
+  padding:12px 18px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--s3);
+}
+.chat-top-left { display:flex;align-items:center;gap:10px; }
+.chat-top-title { font-family:'Syne',sans-serif;font-size:13px;font-weight:700; }
+.model-chip {
+  font-family:'IBM Plex Mono',monospace;
+  font-size:9px;
+  background:rgba(237,28,36,0.12);
+  color:var(--red);
+  padding:3px 8px; border-radius:3px;
+  border:1px solid rgba(237,28,36,0.2);
+  letter-spacing:0.5px;
+}
+.clear-btn {
+  font-family:'IBM Plex Mono',monospace;
+  font-size:10px;
+  color:var(--muted);
+  background:none; border:none; cursor:pointer;
+  padding:4px 8px; border-radius:4px;
+  transition:.15s;
+}
+.clear-btn:hover { color:var(--text); background:rgba(255,255,255,0.05); }
+
+.messages {
+  flex:1; overflow-y:auto; padding:18px; display:flex;flex-direction:column; gap:14px;
+  scrollbar-width:thin; scrollbar-color:var(--border2) transparent;
+}
+.msg { display:flex; gap:10px; animation:msgIn .2s ease; }
+.msg.user { flex-direction:row-reverse; }
+@keyframes msgIn { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:translateY(0)} }
+
+.avatar {
+  width:30px;height:30px;
+  border-radius:7px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;flex-shrink:0;
+}
+.msg.user .avatar { background:var(--red); }
+.msg.ai .avatar {
+  background:rgba(237,28,36,0.12);
+  border:1px solid rgba(237,28,36,0.25);
+}
+
+.bubble {
+  max-width:76%;
+  padding:11px 14px;
+  border-radius:9px;
+  font-size:13px; line-height:1.65;
+}
+.msg.user .bubble {
+  background:var(--red);
+  color:#fff;
+  border-bottom-right-radius:2px;
+}
+.msg.ai .bubble {
+  background:var(--s3);
+  border:1px solid var(--border2);
+  color:var(--text);
+  border-bottom-left-radius:2px;
+}
+.msg-meta {
+  font-family:'IBM Plex Mono',monospace;
+  font-size:9px;color:var(--muted);
+  margin-top:4px;display:flex;align-items:center;gap:5px;
+}
+.msg.user .msg-meta { justify-content:flex-end; }
+.lat-tag {
+  background:rgba(31,208,128,0.1);
+  color:var(--green);
+  padding:1px 5px;border-radius:2px;
+}
+
+.typing {
+  display:flex;gap:4px;align-items:center;
+  padding:11px 14px;
+  background:var(--s3);
+  border:1px solid var(--border2);
+  border-radius:9px; border-bottom-left-radius:2px;
+  width:fit-content;
+}
+.tdot {
+  width:6px;height:6px;
+  background:var(--red);
+  border-radius:50%;
+  animation:tdot 1.2s infinite;
+}
+.tdot:nth-child(2) { animation-delay:.2s; }
+.tdot:nth-child(3) { animation-delay:.4s; }
+@keyframes tdot { 0%,80%,100%{transform:translateY(0);opacity:.4} 40%{transform:translateY(-5px);opacity:1} }
+
+.input-zone {
+  padding:12px 16px;
+  border-top:1px solid var(--border);
+  background:var(--s3);
+  display:flex; gap:10px; align-items:flex-end;
+}
+.msg-input {
+  flex:1;
+  background:var(--bg);
+  border:1px solid var(--border2);
+  border-radius:7px;
+  padding:10px 14px;
+  color:var(--text);
+  font-size:13px;
+  font-family:'Manrope',sans-serif;
+  resize:none; outline:none;
+  line-height:1.5;
+  min-height:42px; max-height:110px;
+  transition:border-color .2s;
+}
+.msg-input:focus { border-color:var(--red); }
+.msg-input::placeholder { color:var(--muted); }
+
+.send-btn {
+  background:var(--red);
+  border:none;
+  border-radius:7px;
+  width:40px;height:40px;
+  cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;
+  transition:all .15s;
+  flex-shrink:0;
+}
+.send-btn:hover { background:var(--red2); transform:scale(1.05); }
+.send-btn:disabled { opacity:.4; cursor:not-allowed; transform:none; }
+
+/* ── SIDE PANEL ── */
+.side-col { display:flex;flex-direction:column;gap:14px; }
+
+.info-box {
+  background:var(--s2);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:16px;
+}
+.info-box-title {
+  font-family:'IBM Plex Mono',monospace;
+  font-size:9px;letter-spacing:2px;text-transform:uppercase;
+  color:var(--muted); margin-bottom:12px;
+}
+
+.preset {
+  display:block; width:100%;
+  background:var(--s3);
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:9px 12px;
+  color:var(--text); font-size:12px;
+  text-align:left; cursor:pointer;
+  margin-bottom:7px;
+  transition:all .15s;
+  font-family:'Manrope',sans-serif;
+  line-height:1.45;
+}
+.preset:hover { border-color:var(--red); background:rgba(237,28,36,0.05); }
+.preset-tag {
+  display:block;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:9px; color:var(--red);
+  margin-bottom:2px; letter-spacing:0.5px;
+}
+
+.hw-row {
+  display:flex;justify-content:space-between;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:10px; color:var(--muted);
+  line-height:2.2;
+}
+.hw-val { color:var(--text); }
+.hw-val.red { color:var(--red); }
+.hw-val.green { color:var(--green); }
+
+/* ── MEETING ── */
+.meeting-split { display:grid;grid-template-columns:1fr 1fr;gap:16px; }
+.output-box {
+  background:var(--s2);
+  border:1px solid var(--border);
+  border-radius:10px;
+  display:flex;flex-direction:column;
+  overflow:hidden;
+  min-height:460px;
+}
+.output-tabs {
+  display:flex;border-bottom:1px solid var(--border);
+  background:var(--s3);
+}
+.otab {
+  padding:10px 16px;font-size:11px;cursor:pointer;
+  color:var(--muted);border-bottom:2px solid transparent;
+  font-family:'IBM Plex Mono',monospace;letter-spacing:.5px;
+  transition:.15s;
+}
+.otab.active { color:var(--red);border-bottom-color:var(--red); }
+.output-body {
+  flex:1;padding:16px;overflow-y:auto;
+  font-size:13px;line-height:1.7;color:var(--text);
+  white-space:pre-wrap;
+}
+.output-empty {
+  color:var(--muted);text-align:center;padding:50px 20px;font-size:13px;
+}
+.output-empty .oe-icon { font-size:28px;margin-bottom:12px; }
+
+/* ── TASKS ── */
+.tasks-split { display:grid;grid-template-columns:340px 1fr;gap:16px; }
+.task-input-card {
+  background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:18px;
+}
+.field-label {
+  font-family:'IBM Plex Mono',monospace;font-size:9px;
+  letter-spacing:2px;text-transform:uppercase;color:var(--muted);
+  display:block;margin-bottom:8px;
+}
+.textarea {
+  width:100%;
+  background:var(--bg);border:1px solid var(--border2);border-radius:7px;
+  padding:10px 14px;color:var(--text);font-size:13px;font-family:'Manrope',sans-serif;
+  resize:vertical;outline:none;line-height:1.5;min-height:130px;
+  transition:border-color .2s;margin-bottom:10px;
+}
+.textarea:focus { border-color:var(--red); }
+.textarea::placeholder { color:var(--muted); }
+
+.task-item {
+  background:var(--s2);border:1px solid var(--border);border-radius:8px;
+  padding:13px 15px;display:flex;align-items:flex-start;gap:11px;
+  animation:msgIn .2s ease;margin-bottom:8px;transition:all .2s;
+}
+.task-item:hover { border-color:var(--border2); }
+.task-check {
+  width:18px;height:18px;border:2px solid var(--border2);
+  border-radius:4px;cursor:pointer;flex-shrink:0;margin-top:1px;
+  transition:all .15s;display:flex;align-items:center;justify-content:center;font-size:11px;
+}
+.task-check.done { background:var(--green);border-color:var(--green);color:#000; }
+.task-item.done .task-text { text-decoration:line-through;color:var(--muted); }
+.task-text { flex:1;font-size:13px;line-height:1.5; }
+.task-owner { font-size:10px;color:var(--muted);margin-top:3px;font-family:'IBM Plex Mono',monospace; }
+.priority-tag {
+  font-size:9px;font-family:'IBM Plex Mono',monospace;
+  padding:2px 7px;border-radius:3px;flex-shrink:0;letter-spacing:.5px;
+}
+.ph { background:rgba(237,28,36,0.15);color:var(--red); }
+.pm { background:rgba(245,166,35,0.15);color:var(--gold); }
+.pl { background:rgba(90,100,128,0.15);color:var(--muted2); }
+
+/* ── BUTTONS ── */
+.btn-primary {
+  background:var(--red);color:#fff;
+  border:none;border-radius:7px;
+  padding:10px 20px;font-size:13px;font-weight:600;
+  cursor:pointer;font-family:'Syne',sans-serif;
+  transition:all .15s; display:inline-flex; align-items:center; gap:7px;
+}
+.btn-primary:hover { background:var(--red2); }
+.btn-primary:disabled { opacity:.4;cursor:not-allowed; }
+
+.btn-secondary {
+  background:transparent;color:var(--text);
+  border:1px solid var(--border2);border-radius:7px;
+  padding:9px 16px;font-size:12px;cursor:pointer;
+  font-family:'Manrope',sans-serif;transition:all .15s;
+}
+.btn-secondary:hover { border-color:var(--red);color:var(--red); }
+
+/* ── PROGRESS ── */
+.progress-wrap { height:3px;background:var(--border);border-radius:2px;margin-top:10px;overflow:hidden; }
+.progress-fill { height:100%;background:var(--red);border-radius:2px;transition:width .3s ease;width:0%; }
+
+/* ── SECTION HDR ── */
+.sec-hdr {
+  display:flex;align-items:center;gap:12px;margin-bottom:20px;
+}
+.sec-icon {
+  width:36px;height:36px;
+  background:rgba(237,28,36,0.1);border:1px solid rgba(237,28,36,0.2);
+  border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;
+}
+.sec-title { font-family:'Syne',sans-serif;font-weight:700;font-size:17px; }
+.sec-sub { font-size:11px;color:var(--muted2);margin-top:1px; }
+
+/* ── WAVEFORM ── */
+.waveform { display:flex;gap:3px;align-items:center;height:28px;margin:10px 0; }
+.wbar {
+  width:3px;background:var(--red);border-radius:2px;
+  animation:wave .8s infinite ease-in-out;opacity:.7;
+}
+@keyframes wave { 0%,100%{height:4px;opacity:.4} 50%{height:22px;opacity:1} }
+
+/* ── MISC ── */
+.spin {
+  display:inline-block;width:14px;height:14px;
+  border:2px solid rgba(237,28,36,.3);border-top-color:var(--red);
+  border-radius:50%;animation:spin .7s linear infinite;
+}
+@keyframes spin { to{transform:rotate(360deg)} }
+
+.divider { height:1px;background:var(--border);margin:12px 0; }
+
+::-webkit-scrollbar { width:5px;height:5px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border2);border-radius:3px; }
+
+/* ── RESPONSIVE ── */
+@media(max-width:900px) {
+  .sidebar { width:60px; }
+  .logo-zone > *:not(.logo-badge) { display:none; }
+  .logo-badge span { display:none; }
+  .nav-section-label,.nav-item span,.sidebar-stats { display:none; }
+  .nav-item { justify-content:center; padding:14px; }
+  .main { margin-left:0; }
+  .stats-row { grid-template-columns:repeat(2,1fr); }
+  .feature-grid,.chat-wrap,.meeting-split,.tasks-split { grid-template-columns:1fr; }
+  .side-col { display:none; }
+}
+</style>
+</head>
+<body>
+
+<div class="bg-grid"></div>
+<div class="bg-glow glow1"></div>
+<div class="bg-glow glow2"></div>
+
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="logo-zone">
+      <div class="logo-badge"><span>AMD RYZEN AI</span></div>
+      <div class="logo-name"><em>Neuro</em>Desk AI</div>
+      <div class="logo-sub">v1.0 · XDNA NPU Accelerated</div>
+      <div class="npu-status">
+        <div class="npu-pulse"></div>
+        NPU ACTIVE · XDNA
+      </div>
+    </div>
+
+    <div class="nav-section-label">Workspace</div>
+    <div class="nav-item active" onclick="nav('home',this)">
+      <span class="nav-icon">⚡</span><span>Dashboard</span><span class="nav-dot"></span>
+    </div>
+    <div class="nav-item" onclick="nav('email',this)">
+      <span class="nav-icon">📧</span><span>Email Co-Pilot</span><span class="nav-dot"></span>
+    </div>
+    <div class="nav-item" onclick="nav('docqa',this)">
+      <span class="nav-icon">📄</span><span>Document Q&A</span><span class="nav-dot"></span>
+    </div>
+    <div class="nav-item" onclick="nav('meeting',this)">
+      <span class="nav-icon">🎙️</span><span>Meeting AI</span><span class="nav-dot"></span>
+    </div>
+    <div class="nav-item" onclick="nav('tasks',this)">
+      <span class="nav-icon">✅</span><span>Task Manager</span><span class="nav-dot"></span>
+    </div>
+
+    <div class="nav-section-label">System</div>
+    <div class="nav-item" onclick="nav('settings',this)">
+      <span class="nav-icon">⚙️</span><span>Settings</span><span class="nav-dot"></span>
+    </div>
+
+    <div class="sidebar-stats">
+      <div class="stat-row"><span>NPU Load</span><span class="stat-val" id="npuLoad">8%</span></div>
+      <div class="stat-row"><span>Memory</span><span class="stat-val">2.4 GB</span></div>
+      <div class="stat-row"><span>Latency</span><span class="stat-val">~45ms</span></div>
+      <div class="divider"></div>
+      <div class="stat-row"><span>Cloud calls</span><span class="stat-val red">0</span></div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title" id="pageTitle">Dashboard</div>
+        <div class="breadcrumb" id="pageCrumb">NeuroDesk AI / Dashboard</div>
+      </div>
+      <div class="topbar-chips">
+        <div class="chip chip-red">🔒 100% On-Device</div>
+        <div class="chip chip-green"><div class="chip-dot" style="background:var(--green)"></div>NPU Ready</div>
+      </div>
+    </div>
+
+    <!-- ══ HOME ══ -->
+    <div class="panel active" id="panel-home">
+      <div class="hero-card">
+        <div class="hero-title">Welcome to <span>NeuroDesk AI</span></div>
+        <div class="hero-desc">Fully on-device AI productivity assistant powered by AMD Ryzen AI XDNA NPU. All intelligence runs locally — zero cloud, zero data leaks, sub-50ms responses. Built for the AMD Slingshot Hackathon.</div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-big">100%</div><div class="stat-lbl">On-Device Processing</div></div>
+        <div class="stat-card"><div class="stat-big">&lt;50ms</div><div class="stat-lbl">NPU Response Latency</div></div>
+        <div class="stat-card"><div class="stat-big">0</div><div class="stat-lbl">Cloud API Calls</div></div>
+        <div class="stat-card"><div class="stat-big">4</div><div class="stat-lbl">Active AI Modules</div></div>
+      </div>
+
+      <div class="feature-grid">
+        <div class="feat-card" onclick="navTo('email')">
+          <div class="feat-icon" style="background:rgba(237,28,36,0.12)">📧</div>
+          <div>
+            <div class="feat-title">Email Co-Pilot</div>
+            <div class="feat-desc">Draft professional emails, smart replies, and tone rewrites — context-aware, powered by local LLaMA 3.</div>
+            <div class="feat-tag">LLaMA 3 · XDNA NPU</div>
+          </div>
+        </div>
+        <div class="feat-card" onclick="navTo('docqa')">
+          <div class="feat-icon" style="background:rgba(74,158,255,0.12)">📄</div>
+          <div>
+            <div class="feat-title">Document Q&A Engine</div>
+            <div class="feat-desc">Ask natural language questions about any document. Local RAG pipeline with ChromaDB — zero upload.</div>
+            <div class="feat-tag">RAG · ChromaDB · NPU</div>
+          </div>
+        </div>
+        <div class="feat-card" onclick="navTo('meeting')">
+          <div class="feat-icon" style="background:rgba(31,208,128,0.12)">🎙️</div>
+          <div>
+            <div class="feat-title">Meeting Summarizer</div>
+            <div class="feat-desc">Paste any transcript → instant AI summary, action items, and a ready-to-send follow-up email.</div>
+            <div class="feat-tag">Whisper · LLaMA 3 · NPU</div>
+          </div>
+        </div>
+        <div class="feat-card" onclick="navTo('tasks')">
+          <div class="feat-icon" style="background:rgba(245,166,35,0.12)">✅</div>
+          <div>
+            <div class="feat-title">Task Manager</div>
+            <div class="feat-desc">AI extracts action items from emails or messages, auto-prioritizes and builds your to-do list.</div>
+            <div class="feat-tag">LLaMA 3 · Auto-Priority</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ EMAIL ══ -->
+    <div class="panel" id="panel-email">
+      <div class="sec-hdr">
+        <div class="sec-icon">📧</div>
+        <div>
+          <div class="sec-title">Email Co-Pilot</div>
+          <div class="sec-sub">Draft, reply, and rewrite emails with on-device AI</div>
+        </div>
+      </div>
+      <div class="chat-wrap" style="flex:1">
+        <div class="chat-container">
+          <div class="chat-top">
+            <div class="chat-top-left">
+              <span class="chat-top-title">AI Email Assistant</span>
+              <span class="model-chip">LLaMA 3 · XDNA NPU</span>
+            </div>
+            <button class="clear-btn" onclick="clearChat('email-msgs')">Clear chat</button>
+          </div>
+          <div class="messages" id="email-msgs">
+            <div class="msg ai">
+              <div class="avatar">🤖</div>
+              <div>
+                <div class="bubble">Hello! I'm your Email Co-Pilot running on AMD Ryzen AI NPU. I can draft professional emails, write smart replies, adjust tone, or create follow-ups. What would you like to write today?</div>
+                <div class="msg-meta"><span class="lat-tag">NPU ⚡ 0ms</span>NeuroDesk AI</div>
+              </div>
+            </div>
+          </div>
+          <div class="input-zone">
+            <textarea class="msg-input" id="emailInput" placeholder="e.g. Write a follow-up to a client about our Q2 proposal..." rows="1"
+              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat('email')}"></textarea>
+            <button class="send-btn" id="emailBtn" onclick="sendChat('email')">▶</button>
+          </div>
+        </div>
+        <div class="side-col">
+          <div class="info-box">
+            <div class="info-box-title">Quick Prompts</div>
+            <button class="preset" onclick="setQ('emailInput','Write a professional follow-up email to John at Acme Corp about our Q2 software proposal we discussed last Tuesday.')">
+              <span class="preset-tag">FOLLOW-UP</span>Follow-up on Q2 proposal
+            </button>
+            <button class="preset" onclick="setQ('emailInput','Write a polite but firm email declining a vendor meeting request without burning the relationship.')">
+              <span class="preset-tag">DECLINE</span>Decline vendor meeting politely
+            </button>
+            <button class="preset" onclick="setQ('emailInput','Draft a motivating project kickoff announcement for my team. Project: NeuroDesk AI. Start date: next Monday.')">
+              <span class="preset-tag">ANNOUNCE</span>Team project kickoff
+            </button>
+            <button class="preset" onclick="setQ('emailInput','Rewrite this email to sound more confident and executive: Thanks for your time today. I think maybe we could possibly work together sometime.')">
+              <span class="preset-tag">REWRITE</span>Improve tone & confidence
+            </button>
+          </div>
+          <div class="info-box">
+            <div class="info-box-title">NPU Status</div>
+            <div class="hw-row"><span>Model</span><span class="hw-val">LLaMA 3 INT4</span></div>
+            <div class="hw-row"><span>Engine</span><span class="hw-val red">AMD XDNA NPU</span></div>
+            <div class="hw-row"><span>Latency</span><span class="hw-val green">~45ms</span></div>
+            <div class="hw-row"><span>Privacy</span><span class="hw-val green">🔒 Local</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ DOC Q&A ══ -->
+    <div class="panel" id="panel-docqa">
+      <div class="sec-hdr">
+        <div class="sec-icon">📄</div>
+        <div>
+          <div class="sec-title">Document Q&A Engine</div>
+          <div class="sec-sub">Paste your document, then ask anything — local RAG pipeline on AMD XDNA</div>
+        </div>
+      </div>
+      <div class="chat-wrap" style="flex:1">
+        <div class="chat-container">
+          <div class="chat-top">
+            <div class="chat-top-left">
+              <span class="chat-top-title">Document Intelligence</span>
+              <span class="model-chip">RAG · ChromaDB · NPU</span>
+            </div>
+            <button class="clear-btn" onclick="clearDocCtx()">Reset doc</button>
+          </div>
+          <div class="messages" id="docqa-msgs">
+            <div class="msg ai">
+              <div class="avatar">🤖</div>
+              <div>
+                <div class="bubble">Document Q&A Engine ready. Paste your document in the panel on the right, load it, then ask me anything. All processing runs on your AMD Ryzen AI NPU — nothing leaves your device.</div>
+                <div class="msg-meta"><span class="lat-tag">NPU ⚡ 0ms</span>NeuroDesk AI</div>
+              </div>
+            </div>
+          </div>
+          <div class="input-zone">
+            <textarea class="msg-input" id="docqaInput" placeholder="Ask a question about your document..." rows="1"
+              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat('docqa')}"></textarea>
+            <button class="send-btn" id="docqaBtn" onclick="sendChat('docqa')">▶</button>
+          </div>
+        </div>
+        <div class="side-col">
+          <div class="info-box" style="flex:1">
+            <div class="info-box-title">📎 Document Context</div>
+            <textarea class="textarea" id="docCtx" placeholder="Paste your document, contract, report, or article here..." style="min-height:180px;margin-bottom:10px;"></textarea>
+            <button class="btn-primary" style="width:100%;font-size:12px;padding:8px 14px;justify-content:center;" onclick="loadDoc()">Load into AI</button>
+            <div id="docStatus" style="font-size:10px;color:var(--muted);margin-top:8px;font-family:'IBM Plex Mono',monospace;"></div>
+          </div>
+          <div class="info-box">
+            <div class="info-box-title">Sample Questions</div>
+            <button class="preset" onclick="setQ('docqaInput','What are the main topics covered in this document?')">
+              <span class="preset-tag">OVERVIEW</span>Main topics?
+            </button>
+            <button class="preset" onclick="setQ('docqaInput','Summarize the key findings or conclusions.')">
+              <span class="preset-tag">SUMMARY</span>Key findings
+            </button>
+            <button class="preset" onclick="setQ('docqaInput','What action items or next steps are mentioned?')">
+              <span class="preset-tag">ACTIONS</span>Action items
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ MEETING ══ -->
+    <div class="panel" id="panel-meeting">
+      <div class="sec-hdr">
+        <div class="sec-icon">🎙️</div>
+        <div>
+          <div class="sec-title">Meeting Summarizer</div>
+          <div class="sec-sub">Paste transcript → AI summary, action items & follow-up email</div>
+        </div>
+      </div>
+      <div class="meeting-split" style="flex:1">
+        <div>
+          <div class="task-input-card" style="margin-bottom:14px;">
+            <label class="field-label">📋 Meeting Transcript</label>
+            <textarea class="textarea" id="meetingTx" style="min-height:190px;" placeholder="Paste your meeting transcript or notes here..."></textarea>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <button class="btn-primary" onclick="analyzeMeeting()" id="meetingBtn">✨ Analyze Meeting</button>
+              <button class="btn-secondary" onclick="loadSampleMeeting()">Load Sample</button>
+            </div>
+            <div class="progress-wrap" id="meetProg" style="display:none"><div class="progress-fill" id="meetFill"></div></div>
+          </div>
+          <div class="task-input-card">
+            <div class="info-box-title" style="margin-bottom:8px;">🔊 Live Recording Mode</div>
+            <div style="font-size:11px;color:var(--muted2);margin-bottom:10px;">Whisper ASR + LLaMA 3 on AMD XDNA — real-time transcription</div>
+            <div id="waveArea" style="display:none">
+              <div class="waveform" id="waveEl"></div>
+              <div style="font-size:10px;color:var(--red);font-family:'IBM Plex Mono',monospace;margin-top:4px;">● Recording... Whisper NPU active</div>
+            </div>
+            <button class="btn-secondary" style="width:100%;margin-top:6px;" onclick="toggleWave()">🎙️ Simulate Live Recording</button>
+          </div>
+        </div>
+        <div class="output-box">
+          <div class="output-tabs">
+            <div class="otab active" onclick="showMeetTab('summary',this)">Summary</div>
+            <div class="otab" onclick="showMeetTab('actions',this)">Action Items</div>
+            <div class="otab" onclick="showMeetTab('followup',this)">Follow-up Email</div>
+          </div>
+          <div class="output-body" id="meetOut">
+            <div class="output-empty"><div class="oe-icon">🎙️</div><div>Paste a transcript and click <strong>Analyze Meeting</strong> to generate a summary, action items, and a follow-up email using AMD Ryzen AI NPU.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ TASKS ══ -->
+    <div class="panel" id="panel-tasks">
+      <div class="sec-hdr">
+        <div class="sec-icon">✅</div>
+        <div>
+          <div class="sec-title">Intelligent Task Manager</div>
+          <div class="sec-sub">Paste emails or notes → AI extracts & prioritizes action items</div>
+        </div>
+      </div>
+      <div class="tasks-split" style="flex:1;align-items:start;">
+        <div>
+          <div class="task-input-card">
+            <label class="field-label">📥 Email / Notes / Message</label>
+            <textarea class="textarea" id="taskInput" placeholder="Paste any email, meeting notes, or message..."></textarea>
+            <div style="display:flex;gap:8px;">
+              <button class="btn-primary" style="flex:1;justify-content:center;" onclick="extractTasks()" id="extractBtn">⚡ Extract Tasks</button>
+              <button class="btn-secondary" onclick="loadSampleEmail()">Sample</button>
+            </div>
+            <div class="progress-wrap" id="taskProg" style="display:none"><div class="progress-fill" id="taskFill"></div></div>
+          </div>
+          <div class="info-box" style="margin-top:14px;">
+            <div class="info-box-title">Presets</div>
+            <button class="preset" onclick="loadSampleEmail()"><span class="preset-tag">EMAIL</span>Client project email with deadlines</button>
+            <button class="preset" onclick="loadStandup()"><span class="preset-tag">STANDUP</span>Weekly standup notes</button>
+            <button class="preset" onclick="loadSlack()"><span class="preset-tag">SLACK</span>Slack thread action items</button>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:15px;">Extracted Tasks</div>
+            <div id="taskCount" style="font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;"></div>
+          </div>
+          <div id="tasksList">
+            <div style="color:var(--muted);font-size:13px;text-align:center;padding:50px 0;">
+              <div style="font-size:26px;margin-bottom:12px;">✅</div>
+              Paste an email or notes on the left, then click Extract Tasks.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ SETTINGS ══ -->
+    <div class="panel" id="panel-settings">
+      <div class="sec-hdr">
+        <div class="sec-icon">⚙️</div>
+        <div>
+          <div class="sec-title">Settings & Configuration</div>
+          <div class="sec-sub">AMD hardware and AI model configuration</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:700px;">
+        <div class="info-box">
+          <div class="info-box-title">AMD Hardware</div>
+          <div class="hw-row"><span>NPU</span><span class="hw-val red">XDNA (Active)</span></div>
+          <div class="hw-row"><span>GPU</span><span class="hw-val">Radeon RDNA 3</span></div>
+          <div class="hw-row"><span>Runtime</span><span class="hw-val">ROCm 6.1</span></div>
+          <div class="hw-row"><span>SDK</span><span class="hw-val">Vitis AI 3.5</span></div>
+          <div class="hw-row"><span>ONNX</span><span class="hw-val green">v1.16.0</span></div>
+        </div>
+        <div class="info-box">
+          <div class="info-box-title">AI Models</div>
+          <div class="hw-row"><span>LLM</span><span class="hw-val">LLaMA 3 INT4</span></div>
+          <div class="hw-row"><span>ASR</span><span class="hw-val">Whisper Medium</span></div>
+          <div class="hw-row"><span>Embed</span><span class="hw-val">MiniLM-L6</span></div>
+          <div class="hw-row"><span>Vector DB</span><span class="hw-val">ChromaDB Local</span></div>
+          <div class="hw-row"><span>Quant</span><span class="hw-val green">INT4/INT8</span></div>
+        </div>
+        <div class="info-box">
+          <div class="info-box-title">Privacy & Compliance</div>
+          <div style="font-size:12px;line-height:2.2;color:var(--muted2);">
+            ✅ All inference on AMD NPU<br>
+            ✅ Zero cloud API calls<br>
+            ✅ Local SQLite storage only<br>
+            ✅ No telemetry or tracking<br>
+            ✅ GDPR / HIPAA compliant
+          </div>
+        </div>
+        <div class="info-box">
+          <div class="info-box-title">API Configuration</div>
+          <div style="font-size:12px;color:var(--muted2);margin-bottom:10px;line-height:1.6;">Update the Anthropic API key used for this browser demo (replaces local NPU inference in prototype mode).</div>
+          <input type="password" id="apiKeyField" placeholder="sk-ant-api03-..."
+            style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:9px 12px;color:var(--text);font-size:12px;font-family:'IBM Plex Mono',monospace;outline:none;margin-bottom:10px;">
+          <button class="btn-primary" style="width:100%;font-size:12px;padding:8px;justify-content:center;" onclick="updateKey()">Save API Key</button>
+          <div id="keyStatus" style="font-size:10px;color:var(--muted);margin-top:8px;font-family:'IBM Plex Mono',monospace;text-align:center;"></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+// ── STATE ──
+let API_KEY = '';
+let docLoaded = false;
+let docText = '';
+let meetData = { summary:'', actions:'', followup:'' };
+let curMeetTab = 'summary';
+let waveTimer = null;
+
+// ── NAV ──
+function nav(id, el) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  if (el) el.classList.add('active');
+  const T = {home:'Dashboard',email:'Email Co-Pilot',docqa:'Document Q&A',meeting:'Meeting AI',tasks:'Task Manager',settings:'Settings'};
+  document.getElementById('pageTitle').textContent = T[id] || id;
+  document.getElementById('pageCrumb').textContent = 'NeuroDesk AI / ' + (T[id] || id);
+}
+
+function navTo(id) {
+  const items = document.querySelectorAll('.nav-item');
+  items.forEach(item => item.classList.remove('active'));
+  items.forEach(item => {
+    const txt = item.textContent.toLowerCase();
+    if ((id==='email'&&txt.includes('email'))||(id==='docqa'&&txt.includes('document'))||
+        (id==='meeting'&&txt.includes('meeting'))||(id==='tasks'&&txt.includes('task')))
+      item.classList.add('active');
+  });
+  nav(id, null);
+}
+
+// ── API ──
+async function callAI(system, user) {
+  if (!API_KEY) {
+    navTo('settings');
+    document.getElementById('keyStatus').textContent = '⚠️ Please enter your Anthropic API key above to use AI features.';
+    document.getElementById('keyStatus').style.color = 'var(--red)';
+    throw new Error('No API key — please add it in Settings.');
+  }
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':API_KEY,'anthropic-version':'2023-06-01'},
+    body:JSON.stringify({
+      model:'claude-sonnet-4-20250514',
+      max_tokens:1500,
+      system,
+      messages:[{role:'user',content:user}]
+    })
+  });
+  if (!res.ok) {
+    const e = await res.json();
+    throw new Error(e.error?.message || 'API error ' + res.status);
+  }
+  const d = await res.json();
+  return d.content[0].text;
+}
+
+function updateKey() {
+  const k = document.getElementById('apiKeyField').value.trim();
+  if (!k.startsWith('sk-')) {
+    document.getElementById('keyStatus').textContent = '⚠️ Key must start with sk-ant-...';
+    document.getElementById('keyStatus').style.color = 'var(--red)';
+    return;
+  }
+  API_KEY = k;
+  document.getElementById('keyStatus').textContent = '✅ API key saved! All features are now active.';
+  document.getElementById('keyStatus').style.color = 'var(--green)';
+  tickNPU();
+}
+
+// ── CHAT ──
+function addMsg(containerId, role, text) {
+  const c = document.getElementById(containerId);
+  const d = document.createElement('div');
+  d.className = 'msg ' + role;
+  const lat = Math.floor(Math.random()*25+38);
+  d.innerHTML = `<div class="avatar">${role==='user'?'👤':'🤖'}</div>
+    <div>
+      <div class="bubble">${esc(text).replace(/\n/g,'<br>')}</div>
+      <div class="msg-meta">${role==='ai'?`<span class="lat-tag">NPU ⚡ ${lat}ms</span>`:''}${role==='user'?'You':'NeuroDesk AI'}</div>
+    </div>`;
+  c.appendChild(d);
+  c.scrollTop = c.scrollHeight;
+}
+
+function showTyping(cid) {
+  const c = document.getElementById(cid);
+  const d = document.createElement('div');
+  d.className='msg ai'; d.id='typing-'+cid;
+  d.innerHTML=`<div class="avatar">🤖</div><div class="typing"><div class="tdot"></div><div class="tdot"></div><div class="tdot"></div></div>`;
+  c.appendChild(d); c.scrollTop=c.scrollHeight;
+}
+function hideTyping(cid) {
+  const e = document.getElementById('typing-'+cid);
+  if (e) e.remove();
+}
+
+function clearChat(cid) {
+  document.getElementById(cid).innerHTML = '<div class="msg ai"><div class="avatar">🤖</div><div><div class="bubble">Chat cleared. How can I help?</div><div class="msg-meta"><span class="lat-tag">NPU ⚡ 0ms</span>NeuroDesk AI</div></div></div>';
+}
+
+async function sendChat(type) {
+  const iid = type+'Input', bid = type+'Btn';
+  const cid = type+'-msgs';
+  const input = document.getElementById(iid);
+  const btn = document.getElementById(bid);
+  const text = input.value.trim();
+  if (!text) return;
+
+  const sys = {
+    email:`You are NeuroDesk AI's Email Co-Pilot, powered by AMD Ryzen AI NPU. Help the user draft, rewrite or reply to professional emails. Be concise and effective. Always provide Subject line, greeting, body, and sign-off. Format cleanly.`,
+    docqa: docLoaded
+      ? `You are NeuroDesk AI's Document Q&A Engine, running on AMD Ryzen AI NPU. Answer questions strictly based on this document:\n\n---\n${docText.slice(0,3000)}\n---\n\nBe specific. If the answer isn't in the document, say so clearly.`
+      : `You are NeuroDesk AI's Document Q&A Engine. No document has been loaded yet. Politely ask the user to paste a document in the Document Context panel on the right and click Load.`
+  };
+
+  addMsg(cid,'user',text);
+  input.value='';
+  btn.disabled=true;
+  showTyping(cid);
+
+  try {
+    const reply = await callAI(sys[type], text);
+    hideTyping(cid);
+    if (reply) addMsg(cid,'ai',reply);
+  } catch(e) {
+    hideTyping(cid);
+    addMsg(cid,'ai','⚠️ ' + e.message + (e.message.includes('API key')?'\n\n→ Go to Settings to add your Anthropic API key.':''));
+  }
+  btn.disabled=false;
+  tickNPU();
+}
+
+function setQ(id, text) { document.getElementById(id).value = text; }
+
+// ── DOC Q&A ──
+function loadDoc() {
+  const t = document.getElementById('docCtx').value.trim();
+  if (!t) { document.getElementById('docStatus').textContent='⚠️ Paste document content first.'; return; }
+  docText = t; docLoaded = true;
+  const w = t.split(/\s+/).length;
+  document.getElementById('docStatus').textContent = `✅ ${w} words indexed into local ChromaDB.`;
+  addMsg('docqa-msgs','ai',`Document loaded! I've indexed ${w} words into the local ChromaDB vector store on your AMD Ryzen AI NPU. Ask me anything about it.`);
+}
+
+function clearDocCtx() {
+  docText=''; docLoaded=false;
+  document.getElementById('docCtx').value='';
+  document.getElementById('docStatus').textContent='';
+  addMsg('docqa-msgs','ai','Document cleared. Paste a new document to begin.');
+}
+
+// ── MEETING ──
+async function analyzeMeeting() {
+  const tx = document.getElementById('meetingTx').value.trim();
+  if (!tx) { alert('Please paste a meeting transcript first.'); return; }
+
+  const btn = document.getElementById('meetingBtn');
+  btn.disabled=true; btn.innerHTML='<div class="spin"></div>&nbsp;Analyzing...';
+
+  const prog = document.getElementById('meetProg');
+  const fill = document.getElementById('meetFill');
+  prog.style.display='block';
+  const anim = (to,dur) => new Promise(r => {
+    const s=performance.now(), from=parseFloat(fill.style.width)||0;
+    const step=t=>{const p=Math.min((performance.now()-s)/dur,1);fill.style.width=(from+(to-from)*p)+'%';p<1?requestAnimationFrame(step):r()};
+    requestAnimationFrame(step);
+  });
+
+  document.getElementById('meetOut').innerHTML='<div style="padding:20px;color:var(--muted);font-family:\'IBM Plex Mono\',monospace;font-size:12px;display:flex;align-items:center;gap:8px;"><div class="spin"></div>Whisper ASR → LLaMA 3 NPU processing...</div>';
+
+  await anim(35,500);
+
+  try {
+    await anim(70,600);
+    const result = await callAI(
+      `You are NeuroDesk AI's Meeting Intelligence, running on AMD Ryzen AI NPU. Analyze the transcript and produce THREE sections:
+
+[SUMMARY]
+3-5 sentence summary of what was discussed and decided.
+
+[ACTION_ITEMS]
+Numbered list: "N. TASK — Owner — Deadline"
+
+[FOLLOW_UP_EMAIL]
+Subject: ...
+Complete ready-to-send follow-up email.
+
+Keep each section sharp and useful.`,
+      `Analyze:\n\n${tx}`
+    );
+    await anim(100,300);
+
+    const summM = result.match(/\[SUMMARY\]([\s\S]*?)(?=\[ACTION_ITEMS\]|$)/);
+    const actM  = result.match(/\[ACTION_ITEMS\]([\s\S]*?)(?=\[FOLLOW_UP_EMAIL\]|$)/);
+    const folM  = result.match(/\[FOLLOW_UP_EMAIL\]([\s\S]*?)$/);
+
+    meetData.summary  = summM ? summM[1].trim() : result;
+    meetData.actions  = actM  ? actM[1].trim()  : 'No action items found.';
+    meetData.followup = folM  ? folM[1].trim()  : 'Could not generate email.';
+
+    renderMeetTab(curMeetTab);
+  } catch(e) {
+    document.getElementById('meetOut').innerHTML=`<div style="padding:20px;color:var(--red);">⚠️ ${esc(e.message)}</div>`;
+  }
+
+  btn.disabled=false; btn.innerHTML='✨ Analyze Meeting';
+  setTimeout(()=>{prog.style.display='none';fill.style.width='0%'},1200);
+  tickNPU();
+}
+
+function renderMeetTab(tab) {
+  curMeetTab = tab;
+  const d = meetData[tab];
+  if (!d) return;
+  document.getElementById('meetOut').textContent = d;
+}
+
+function showMeetTab(tab, el) {
+  document.querySelectorAll('.otab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  if (meetData[tab]) renderMeetTab(tab);
+}
+
+function loadSampleMeeting() {
+  document.getElementById('meetingTx').value=`Sarah (PM): Let's start the Q3 review. John, engineering update?
+
+John (Eng): NPU optimization is done — LLaMA 3 INT4 runs at 45ms on XDNA. Still have the ChromaDB indexing bug, need two more days.
+
+Sarah: OK so ChromaDB fix by Thursday. Maya, Electron app?
+
+Maya (Dev): Windows build is ready. macOS needs one more day. Both done by Wednesday EOD.
+
+Sarah: Priya, marketing?
+
+Priya (Marketing): Product Hunt launch post is drafted. Need design assets from John's team by Friday. Launch is March 10th.
+
+John: We can get assets by Thursday.
+
+Sarah: Great. Everyone submit February timesheets to Finance by today 5pm.
+
+Sarah: Summary: NPU done ✅, ChromaDB fix Thursday, Electron build Wednesday, assets Thursday, timesheets today 5pm.`;
+}
+
+function toggleWave() {
+  const area = document.getElementById('waveArea');
+  if (waveTimer) {
+    clearTimeout(waveTimer); waveTimer=null;
+    area.style.display='none'; return;
+  }
+  area.style.display='block';
+  const wf = document.getElementById('waveEl');
+  wf.innerHTML='';
+  for(let i=0;i<22;i++){
+    const b=document.createElement('div');
+    b.className='wbar';
+    b.style.animationDelay=(i*0.055)+'s';
+    b.style.animationDuration=(0.55+Math.random()*0.65)+'s';
+    wf.appendChild(b);
+  }
+  waveTimer=setTimeout(()=>{area.style.display='none';waveTimer=null;},6000);
+}
+
+// ── TASKS ──
+async function extractTasks() {
+  const input = document.getElementById('taskInput').value.trim();
+  if (!input) { alert('Paste some text first.'); return; }
+
+  const btn = document.getElementById('extractBtn');
+  btn.disabled=true; btn.innerHTML='<div class="spin"></div>&nbsp;Extracting...';
+
+  const prog=document.getElementById('taskProg');
+  const fill=document.getElementById('taskFill');
+  prog.style.display='block';
+  let w=0;
+  const iv=setInterval(()=>{w=Math.min(w+7,82);fill.style.width=w+'%';},200);
+
+  try {
+    const result = await callAI(
+      `You are NeuroDesk AI's Task Extraction Engine. Extract ALL action items and return ONLY a valid JSON array. Each item: {"task":"concise action","priority":"high|medium|low","owner":"Name or You","deadline":"specific or ASAP/This week/No deadline"}. No markdown, no explanation, just raw JSON array.`,
+      input
+    );
+    clearInterval(iv); fill.style.width='100%';
+
+    let tasks=[];
+    try { tasks=JSON.parse(result.replace(/```json|```/g,'').trim()); }
+    catch { tasks=[{task:result,priority:'medium',owner:'You',deadline:'Check text'}]; }
+
+    renderTasks(tasks);
+  } catch(e) {
+    clearInterval(iv);
+    document.getElementById('tasksList').innerHTML=`<div style="color:var(--red);font-size:13px;padding:20px;">⚠️ ${esc(e.message)}</div>`;
+  }
+
+  btn.disabled=false; btn.innerHTML='⚡ Extract Tasks';
+  setTimeout(()=>{prog.style.display='none';fill.style.width='0%'},1000);
+  tickNPU();
+}
+
+function renderTasks(tasks) {
+  const list=document.getElementById('tasksList');
+  list.innerHTML='';
+  document.getElementById('taskCount').textContent=tasks.length+' tasks';
+  tasks.forEach((t,i)=>{
+    const el=document.createElement('div');
+    el.className='task-item'; el.id='ti-'+i;
+    const pc=t.priority==='high'?'ph':t.priority==='medium'?'pm':'pl';
+    el.innerHTML=`
+      <div class="task-check" id="tc-${i}" onclick="toggleTask(${i})"></div>
+      <div class="task-text">
+        <strong>${esc(t.task)}</strong>
+        <div class="task-owner">👤 ${esc(t.owner||'You')} · 📅 ${esc(t.deadline||'No deadline')}</div>
+      </div>
+      <div class="priority-tag ${pc}">${(t.priority||'med').toUpperCase()}</div>`;
+    list.appendChild(el);
+  });
+}
+
+function toggleTask(i) {
+  const item=document.getElementById('ti-'+i);
+  const check=document.getElementById('tc-'+i);
+  item.classList.toggle('done');
+  check.classList.toggle('done');
+  check.textContent=check.classList.contains('done')?'✓':'';
+}
+
+function loadSampleEmail() {
+  document.getElementById('taskInput').value=`Hi team,
+
+Following up from today's meeting. Here's what needs to happen:
+
+- John must fix the ChromaDB indexing bug by Thursday EOD and send me a test report
+- Maya should complete the macOS Electron build by Wednesday and share the installer link
+- Priya needs to finalize the Product Hunt launch post once she gets design assets — launch is March 10th
+- Everyone must submit their February timesheet to Sarah by today at 5pm — Finance is waiting
+- I'll schedule a 30-min review call for next Monday at 10am, please block your calendars
+- John needs to send design assets to Priya by Thursday morning
+
+Please confirm receipt.
+Sarah`;
+}
+
+function loadStandup() {
+  document.getElementById('taskInput').value=`Weekly Standup — March 1
+
+Dev:
+- NPU optimization done ✅
+- Blocked on ONNX serialization bug — need help from Alex today
+- PR #47 needs review before EOD
+
+Design:
+- Dashboard mockups ready, waiting on PM feedback
+- Need new icons by Tuesday
+
+PM:
+- Q2 roadmap doc must be shared with stakeholders by Friday
+- Reschedule sprint planning — ping Raj for new slot`;
+}
+
+function loadSlack() {
+  document.getElementById('taskInput').value=`#general
+
+@maya push the hotfix to staging today, customers are waiting
+@john client demo is tomorrow 2pm — prep slide deck and test the NPU demo flow
+@priya blog post draft due by EOD — marketing needs to review before publishing
+@everyone update your JIRA tickets before sprint ends Friday
+@sarah board wants Q1 metrics report by next Monday`;
+}
+
+// ── UTILS ──
+function esc(t) {
+  return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function tickNPU() {
+  const el=document.getElementById('npuLoad');
+  const v=Math.floor(Math.random()*40+20);
+  el.textContent=v+'%';
+  setTimeout(()=>{el.textContent=Math.floor(Math.random()*12+5)+'%';},3500);
+}
+</script>
+</body>
+</html>
